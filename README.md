@@ -4,73 +4,58 @@ Bộ kiểm thử và đánh giá chất lượng cho hệ thống **SpineInsigh
 
 | | |
 |---|---|
-| Môn học | Đánh giá và Kiểm định chất lượng phần mềm |
+| Môn học | Đánh giá và Kiểm định chất lượng phần mềm (CSE703010) |
 | Học kỳ | HK I, năm học 2026–2027 |
 | Đơn vị | Đại học Phenikaa — Phenikaa Applied AI Lab |
-| Hệ thống được kiểm thử (SUT) | [AhDuxng/SPINEINSIGHT_AI](https://github.com/AhDuxng/SPINEINSIGHT_AI) |
-| Trạng thái | Khởi tạo — đang lập kế hoạch kiểm thử |
+| Hệ thống được kiểm thử (SUT) | [phenikaa-a2i-lab/SPINEINSIGHT_AI](https://github.com/phenikaa-a2i-lab/SPINEINSIGHT_AI), commit `38ee7f1` (nhánh `vietvq`) |
+| Trạng thái | Đã thực thi đợt 1 (22/10/2026): 600 test, 15 lỗi được ghi nhận |
 
 ---
 
 ## 1. Mục tiêu
 
-SpineInsight AI là hệ thống web do nhóm tự phát triển, hỗ trợ bác sĩ xem, đo đạc và chú giải ảnh MRI cột sống thắt lưng. Hệ thống tích hợp mô hình AI phân loại tổn thương theo chuẩn RSNA 2024 và tự động sinh báo cáo lâm sàng thông qua MedGemma.
+SpineInsight AI là hệ thống web hỗ trợ bác sĩ xem, đo đạc và chú giải ảnh MRI cột sống thắt lưng, tích hợp mô hình AI phân loại tổn thương theo chuẩn RSNA 2024 và tự động sinh báo cáo (P2VG). Kho này chứa toàn bộ mã kiểm thử tự động cho hệ thống, tách riêng khỏi mã nguồn: SUT chỉ được đọc, không bị sửa.
 
-Theo tài liệu audit nội bộ của dự án (`docs/02-audit/A02-gap-analysis.md`, khoảng trống G13 và sổ rủi ro P01, mục RK7), hệ thống hiện **không có bất kỳ kiểm thử tự động nào**, trong khi phần lõi hình học DICOM chứa mã chưa từng được thực thi. Đề tài này xây dựng quy trình kiểm thử hoàn chỉnh cho hệ thống, gồm bốn giai đoạn: lập kế hoạch, thiết kế test case, thực thi và báo cáo, nhằm:
+Mục tiêu:
 
-1. Xác minh tính đúng đắn của các mô-đun có rủi ro cao (biến đổi toạ độ DICOM, domain model cột sống, gom series).
-2. Kiểm tra toàn bộ 27 REST endpoint về chức năng, xác thực, phân quyền và xử lý lỗi.
-3. Kiểm thử các luồng nghiệp vụ chính từ góc nhìn người dùng cuối.
-4. Đánh giá bảo mật, hiệu năng và chất lượng tổng thể theo ISO/IEC 25010.
-5. Phát hiện, ghi nhận và theo dõi lỗi thực tế; cung cấp bằng chứng định lượng về chất lượng sản phẩm.
+1. Xác minh tính đúng đắn của backend (xác thực, phân quyền, proxy AI, ca chụp, DICOM) và các hàm tính toán của frontend (đo đạc, toạ độ DICOM, xử lý ảnh).
+2. Kiểm tra các REST endpoint về chức năng, xác thực, phân quyền và xử lý lỗi.
+3. Kiểm thử luồng đăng nhập và điều hướng theo vai trò từ góc nhìn người dùng.
+4. Đo độ bao phủ và điểm kiểm thử đột biến; ghi nhận lỗi thực tế kèm bằng chứng tái hiện.
 
 ---
 
-## 2. Đối tượng kiểm thử
+## 2. Kết quả đợt 1
 
-| Thành phần | Công nghệ | Quy mô |
-|---|---|---|
-| Frontend | React 18, TypeScript 5.7, Vite 6, zustand, Tailwind CSS, dicom-parser | ~10.600 LOC module viewer, 13 công cụ đo vẽ, 8 store |
-| Backend | Node.js 20, Express 4, Supabase (PostgreSQL, RLS, audit log) | 27 endpoint, 5 nhóm route |
-| Dịch vụ AI | RSNA spine model (`/predict/analyze`), MedGemma P2VG (`/api/generate-impression`) | Dịch vụ ngoài, gọi qua proxy backend |
-| Triển khai | Netlify (SPA + serverless function) | — |
-
-### 2.1. Khu vực ưu tiên kiểm thử
-
-Danh sách dưới đây được rút ra từ việc đọc mã nguồn và tài liệu audit của SUT. Các phát hiện cần được xác nhận bằng thực thi trước khi ghi nhận là lỗi.
-
-| STT | Khu vực | Vấn đề tiềm ẩn | Tầng kiểm thử |
+| Tầng | Công cụ | Test | Kết quả |
 |---|---|---|---|
-| 1 | `frontend/src/features/viewer/utils/spatialUtils.ts` | 4/7 hàm biến đổi toạ độ chưa từng được gọi; lỗi lệch toạ độ không gây crash (RK1) | Unit |
-| 2 | `backend/src/routes/studyRoutes.js` | Không có middleware xác thực; dữ liệu bệnh nhân và báo cáo có thể bị đọc/ghi bởi người chưa đăng nhập | API, Bảo mật |
-| 3 | `GET /api/v1/spine/config`, `GET /api/v1/p2vg/config` | Trả về `apiKey` nội bộ cho người chưa đăng nhập | API, Bảo mật |
-| 4 | `POST /api/v1/spine/analyze`, `POST /api/v1/p2vg/analyze` | Nhận tối đa 2000 file × 100 MB vào bộ nhớ, không yêu cầu xác thực | Hiệu năng, Bảo mật |
-| 5 | `frontend/src/features/viewer/data/localDicomSession.ts` | Chỉ nhận file có đuôi `.dcm`; gom series theo tên thư mục thay vì SeriesInstanceUID (G10) | Unit |
-| 6 | `frontend/src/features/viewer/domain/spine.ts` | Khớp series bằng so khớp chuỗi heuristic; so sánh mức độ phân biệt hoa/thường | Unit |
-| 7 | Ma trận phân quyền admin / doctor / khách | RBAC gắn rời rạc ở từng route, dễ bỏ sót | API |
-| 8 | `frontend/src/services/http.ts` | Interceptor refresh token từ chối các request đồng thời khi đang refresh | E2E |
+| Unit backend | Jest | 249 | Đạt; 5 test ghi nhận lỗi |
+| API / tích hợp | Jest + Supertest | 189 | Đạt; 14 test ghi nhận lỗi; ma trận phân quyền 52/52 ô đúng |
+| Unit frontend | Vitest + fast-check | 153 | Đạt; 8 test ghi nhận lỗi |
+| E2E | Selenium WebDriver (POM) | 9 | Đạt; 1 test ghi nhận lỗi |
+
+| Chỉ số | Ngưỡng | Thực tế |
+|---|---|---|
+| Độ bao phủ dòng backend | ≥ 80% | 99,77% |
+| Độ bao phủ nhánh backend | ≥ 70% | 97,33% |
+| Độ bao phủ frontend (7 module trong phạm vi) | — | 99,61% dòng, 97,80% nhánh |
+| Mutation score (utils, mappers, middlewares) | ≥ 60% | 99,00% |
+
+Test ghi nhận lỗi được viết với kết quả mong đợi theo đặc tả và đánh dấu `test.failing` (Jest) / `test.fails` (Vitest) / `knownBug` (E2E): bộ test vẫn xanh khi lỗi còn, và sẽ **chuyển đỏ khi lỗi được sửa** để nhắc bỏ đánh dấu. Danh sách lỗi BUG-01…BUG-15 nằm trong báo cáo BTL (Chương 6, nhật ký lỗi); mã lỗi xuất hiện trong tên test tương ứng.
 
 ---
 
 ## 3. Chiến lược kiểm thử
 
-Kiểm thử được tổ chức theo bốn tầng, thực hiện tuần tự từ đơn vị đến hệ thống. Mỗi tầng áp dụng một nhóm kỹ thuật riêng và sinh ra báo cáo độc lập.
+| Tầng | Kỹ thuật | Công cụ |
+|---|---|---|
+| Unit | Phân vùng tương đương, giá trị biên, bảng quyết định, chuyển trạng thái; bao phủ câu lệnh/nhánh; kiểm thử đột biến | Jest (backend), Vitest (frontend), Istanbul, StrykerJS |
+| Property-based | Tính chất bất biến với dữ liệu sinh ngẫu nhiên | fast-check |
+| API / tích hợp | Bảng quyết định vai trò × endpoint, kiểm thử tiêu cực, bảo mật route | Supertest; Supabase và máy chủ AI được giả lập |
+| E2E | Chuyển trạng thái, Page Object Model, chờ tường minh | Selenium WebDriver + Chrome headless, máy chủ giả Supabase/backend |
+| CI | Chạy lại toàn bộ khi push | GitHub Actions (`.github/workflows/test.yml`) |
 
-```mermaid
-flowchart TB
-    L1["Tầng 1 - Unit test (white-box)<br/>Vitest, Stryker<br/>spatialUtils, domain/spine, localDicomSession, backend utils"]
-    L2["Tầng 2 - API test (black-box)<br/>Supertest, Postman/Newman, msw<br/>27 endpoint, ma trận phân quyền, giá trị biên"]
-    L3["Tầng 3 - End-to-end<br/>Playwright<br/>Nạp DICOM, đo góc Cobb, phân tích AI, sửa báo cáo, quản trị"]
-    L4["Tầng 4 - Phi chức năng<br/>OWASP ZAP, k6/JMeter, Lighthouse<br/>Bảo mật, hiệu năng, khả dụng"]
-    L1 --> L2 --> L3 --> L4
-```
-
-| Tầng | Kỹ thuật áp dụng | Công cụ | Tiêu chí hoàn thành |
-|---|---|---|---|
-| Unit | White-box; statement/branch coverage; mutation testing; kiểm chứng vòng tròn (round-trip); phân tích giá trị biên | Vitest, @vitest/coverage-v8, Stryker | Coverage ≥ 80% dòng, ≥ 70% nhánh trên các mô-đun trong phạm vi; mutation score ≥ 60% |
-| API | Black-box; phân hoạch tương đương; bảng quyết định (vai trò × endpoint); kiểm thử tiêu cực; contract testing | Supertest, Postman + Newman, msw (mock Supabase và AI server) | 100% endpoint có ít nhất một test case dương và một test case âm |
-| E2E | Kiểm thử dựa trên use case; Page Object Model; kiểm thử tương thích trình duyệt; kiểm thử song ngữ VI/EN | Playwright | 5–7 kịch bản nghiệp vụ chính chạy ổn định trên Chromium và Firefox |
-| Phi chức năng | OWASP Top 10; load/stress/spike test; kiểm thử khả dụng; đánh giá theo ISO/IEC 25010 | OWASP ZAP, k6 hoặc JMeter, Lighthouse | Báo cáo ZAP không còn lỗi mức High; p95 response time có số liệu; bảng điểm ISO 25010 hoàn chỉnh |
+Không dùng dữ liệu bệnh nhân thật: tài khoản, phản hồi AI và tệp DICOM trong test đều là dữ liệu giả. Khi chạy backend test, `dotenv` của SUT được thay bằng hàm rỗng nên tệp `.env` thật không bao giờ được nạp.
 
 ---
 
@@ -78,109 +63,88 @@ flowchart TB
 
 ```
 SpineInsight-testing/
-├── README.md
-├── docs/                          Tài liệu kiểm thử (sản phẩm chính của môn học)
-│   ├── 01-test-plan/                Test Plan theo IEEE 829 / ISO/IEC/IEEE 29119
-│   ├── 02-requirements/             SRS rút gọn, Requirement Traceability Matrix (RTM)
-│   ├── 03-test-cases/               Test case theo tầng, mã TC-xxx truy vết về RTM
-│   ├── 04-bug-reports/              Mẫu bug report và các lỗi đã ghi nhận
-│   ├── 05-test-reports/             Test Summary Report
-│   └── 06-quality-assessment/       Đánh giá chất lượng theo ISO/IEC 25010
-├── tests/                         Mã kiểm thử tự động
-│   ├── unit/                        Tầng 1
-│   │   ├── spatial/                   Biến đổi toạ độ, giao mặt phẳng, cắt biên (bộ T1–T7)
-│   │   ├── domain/                    domain/spine.ts
-│   │   ├── data/                      localDicomSession.ts
-│   │   └── backend/                   utils và mappers của backend
-│   ├── api/                         Tầng 2
-│   │   ├── supertest/                 Test gọi trực tiếp Express app
-│   │   ├── postman/                   Collection và environment cho Newman
-│   │   └── mocks/                     msw handlers cho Supabase và AI server
-│   ├── e2e/                         Tầng 3
-│   │   ├── specs/                     Kịch bản kiểm thử
-│   │   ├── pages/                     Page Object Model
-│   │   └── fixtures/                  Tài khoản và trạng thái đăng nhập
-│   └── non-functional/              Tầng 4
-│       ├── security/                  Cấu hình, kết quả OWASP ZAP, checklist thủ công
-│       ├── performance/               Script k6 / JMeter
-│       └── accessibility/             Lighthouse, axe
-├── fixtures/                      Dữ liệu kiểm thử dùng chung
-│   ├── dicom/                       Ca MRI mẫu đã ẩn danh
-│   ├── ai-responses/                JSON phản hồi mẫu của RSNA và P2VG server
-│   └── users/                       Tài khoản seed theo vai trò
-├── sut/                           Git submodule trỏ tới SPINEINSIGHT_AI
-├── scripts/                       Script tiện ích (seed dữ liệu, dựng môi trường, xuất báo cáo)
-├── reports/                       Báo cáo sinh tự động khi chạy test (không commit)
-└── .github/workflows/             CI: chạy toàn bộ tầng test trên mỗi push
+├── sut.config.cjs            Xác định vị trí SUT từ biến SUT_DIR (.env)
+├── jest.config.js            Jest cho backend (rootDir = backend của SUT)
+├── jest.stryker.config.js    Jest rút gọn cho StrykerJS (chỉ unit backend)
+├── vitest.config.mjs         Vitest cho các hàm thuần của frontend
+├── stryker.config.mjs        Kiểm thử đột biến
+├── scripts/                  run-jest.cjs, run-stryker.cjs
+├── tests/
+│   ├── support/backend/      setupEnv, giả lập query builder Supabase, dotenv rỗng
+│   ├── unit/backend/         Unit test backend (utils, mappers, middlewares, services)
+│   ├── unit/frontend/        Điều hướng sau đăng nhập, xử lý ảnh (âm bản, cửa sổ, xoay, lật)
+│   ├── unit/spatial/         Đo đạc, toạ độ DICOM, property test
+│   ├── api/supertest/        Test API theo nhóm route, ma trận phân quyền
+│   ├── api/mocks/            Token giả theo vai trò
+│   └── e2e/                  run.mjs, pages/ (Page Object), specs/, fixtures/ (tài khoản, máy chủ giả)
+├── reports/                  Báo cáo sinh khi chạy (không commit): coverage/, mutation/, e2e/
+└── .github/workflows/        CI
 ```
 
 ---
 
-## 5. Kế hoạch thực hiện
+## 5. Cách chạy
 
-| Giai đoạn | Thời gian | Nội dung | Sản phẩm |
-|---|---|---|---|
-| 0. Khởi tạo | Tuần 0 | Thống nhất phạm vi, cấu trúc repo, phân công | README, cấu trúc thư mục |
-| 1. Lập kế hoạch | Tuần 1 | Test Plan, SRS rút gọn, RTM từ use case và gap analysis của SUT | `docs/01-test-plan`, `docs/02-requirements` |
-| 2. Unit test | Tuần 2–3 | Thiết kế và thực thi test tầng 1; đo coverage; mutation testing | `tests/unit`, báo cáo coverage |
-| 3. API test | Tuần 3–4 | Test tầng 2; dựng mock Supabase và AI server; ma trận phân quyền | `tests/api`, báo cáo Newman |
-| 4. E2E | Tuần 5 | Kịch bản nghiệp vụ chính; tương thích trình duyệt | `tests/e2e`, báo cáo Playwright |
-| 5. Phi chức năng | Tuần 6 | OWASP ZAP, k6, Lighthouse | `tests/non-functional`, báo cáo quét |
-| 6. Tổng kết | Tuần 7 | Test Summary Report; đánh giá ISO 25010; chuẩn bị bảo vệ | `docs/05-test-reports`, `docs/06-quality-assessment` |
-| Xuyên suốt | — | Ghi nhận và theo dõi vòng đời lỗi trên GitHub Issues | `docs/04-bug-reports` |
+Chạy trong **Command Prompt (cmd)**. PowerShell có thể chặn `npm.ps1` do chính sách thực thi script.
+
+1. Chuẩn bị SUT: clone `SPINEINSIGHT_AI`, checkout commit `38ee7f1`, chạy `npm install` trong `backend` và `frontend` của SUT.
+2. Tạo tệp `.env` từ `.env.example` và đặt `SUT_DIR` trỏ tới thư mục SUT (chứa `backend/` và `frontend/`).
+3. Cài công cụ kiểm thử và chạy:
+
+```bat
+cd /d F:\2026-2027\HKI\SpineInsight-testing
+npm install
+npm run test:backend:cov
+npm run test:frontend:cov
+npm run test:mutation
+npm run test:e2e
+```
+
+| Lệnh | Nội dung | Báo cáo |
+|---|---|---|
+| `npm run test:backend:cov` | Unit test + API test backend, độ bao phủ Istanbul | `reports/coverage/backend` |
+| `npm run test:frontend:cov` | Unit test + property test frontend | `reports/coverage/frontend` |
+| `npm run test:mutation` | StrykerJS trên utils, mappers, middlewares (sửa tệp tại chỗ rồi khôi phục) | `reports/mutation` |
+| `npm run test:e2e` | Tự khởi động Vite của SUT và máy chủ giả, chạy Selenium | `reports/e2e/screenshots` |
+
+Trên GitHub Actions, workflow tự lấy SUT về `./sut`. Nếu kho SUT ở chế độ riêng tư, cần khai báo secret `SUT_TOKEN`.
 
 ---
 
 ## 6. Quy ước
 
-### 6.1. Mã định danh
-
-Mã định danh dùng để truy vết chéo giữa yêu cầu, test case và lỗi.
-
 | Loại | Định dạng | Ví dụ |
 |---|---|---|
-| Yêu cầu | `REQ-<nhóm>-<số>` | `REQ-AUTH-03`, `REQ-GEO-01` |
-| Test case | `TC-<tầng>-<số>` | `TC-UNIT-012`, `TC-API-041`, `TC-E2E-007` |
-| Lỗi | `BUG-<số>` | `BUG-014` |
+| Unit backend | `UT-<module>-<số>`; bảng quyết định requireAuth dùng `R1`…`R6` | `UT-REQ-09`, `UT-AS-21` |
+| API | `IT-<nhóm>-<số>` | `IT-RBAC-15`, `IT-SPINE-17` |
+| Frontend | `FE-UT-<số>`, `FE-PBT-<số>` | `FE-UT-55` |
+| E2E | `E2E-<số>` | `E2E-09` |
+| Lỗi | `BUG-<số>` | `BUG-09` |
 
-### 6.2. Mức độ nghiêm trọng của lỗi
-
-| Mức | Định nghĩa |
-|---|---|
-| Critical | Mất dữ liệu, lộ dữ liệu bệnh nhân, sai kết quả chẩn đoán, hệ thống không sử dụng được |
-| Major | Chức năng chính sai hoặc không hoạt động, không có cách vòng tránh |
-| Minor | Chức năng phụ sai, có cách vòng tránh |
-| Trivial | Lỗi hiển thị, chính tả, không ảnh hưởng nghiệp vụ |
-
-### 6.3. Quy trình Git
-
-Nhánh làm việc theo mẫu `feature/<tầng>-<nội-dung>`. Mọi thay đổi đi qua Pull Request và được ít nhất một thành viên khác review trước khi hợp nhất vào `main`.
+Mức độ nghiêm trọng của lỗi: **Critical** (lộ dữ liệu bệnh nhân, khoá hệ thống), **Major** (chức năng chính sai hoặc vi phạm phân quyền), **Minor** (chức năng phụ sai, có cách vòng tránh), **Trivial** (lỗi tiềm ẩn, chưa gây ảnh hưởng).
 
 ---
 
 ## 7. Lưu ý về dữ liệu y tế
 
-Không commit ảnh DICOM thật của bệnh nhân vào repo. Dữ liệu kiểm thử chỉ sử dụng ca mẫu đã ẩn danh từ bộ [RSNA 2024 Lumbar Spine Degenerative Classification](https://www.kaggle.com/competitions/rsna-2024-lumbar-spine-degenerative-classification), tuân theo giấy phép phi thương mại, chỉ dùng cho mục đích nghiên cứu và giáo dục.
-
-Tài khoản kiểm thử, API key và URL dịch vụ AI được lưu trong file `.env` (không commit). Chỉ commit `.env.example`.
+Không commit ảnh DICOM thật của bệnh nhân. Nếu cần ảnh thật, chỉ dùng ca mẫu đã ẩn danh từ bộ [RSNA 2024 Lumbar Spine Degenerative Classification](https://www.kaggle.com/competitions/rsna-2024-lumbar-spine-degenerative-classification) theo giấy phép phi thương mại. Tệp `.env` không được commit; chỉ commit `.env.example`.
 
 ---
 
-## 8. Nhóm thực hiện
+## 8. Người thực hiện
 
-| Thành viên | Vai trò | Phụ trách |
-|---|---|---|
-| *(họ tên)* | Test Lead | Test Plan, RTM, tầng Unit |
-| *(họ tên)* | QA Engineer | Tầng API, kiểm thử bảo mật |
-| *(họ tên)* | QA Engineer | Tầng E2E, kiểm thử hiệu năng |
+| Thành viên | Phụ trách |
+|---|---|
+| Nguyễn Văn Hoàng (23010101) | Toàn bộ: đặc tả, kế hoạch, thiết kế và thực thi kiểm thử, báo cáo |
+
+Giảng viên hướng dẫn: TS. Trịnh Thanh Bình.
 
 ---
 
 ## 9. Tài liệu tham chiếu
 
-- IEEE 829-2008 — Standard for Software and System Test Documentation
+- ISTQB Foundation Level Syllabus
 - ISO/IEC/IEEE 29119 — Software Testing
-- ISO/IEC 25010:2023 — Systems and software Quality Requirements and Evaluation (SQuaRE)
-- OWASP Top 10 (2021), OWASP Web Security Testing Guide
-- DICOM PS3.3 C.7.6.2.1.1 — Image Position and Image Orientation (Patient)
-- Tài liệu nội bộ của SUT: `docs/02-audit/A01-as-is-architecture.md`, `docs/02-audit/A02-gap-analysis.md`, `docs/04-roadmap/P01-risk-register.md`
+- ISO/IEC 25010 — Systems and software Quality Requirements and Evaluation (SQuaRE)
+- DICOM PS3.3 C.7.6.2.1.1 (Image Position/Orientation) và C.11.2 (VOI LUT)
+- Tài liệu chính thức của Jest, Supertest, Vitest, fast-check, StrykerJS, Selenium WebDriver

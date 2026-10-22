@@ -1,0 +1,126 @@
+# Chạy bộ kiểm thử SpineInsight AI trên mỗi lần push / pull request.
+# SUT (phenikaa-a2i-lab/SPINEINSIGHT_AI) được checkout vào ./sut tại đúng commit đã chốt để kiểm thử.
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      mutation:
+        description: 'Chạy thêm mutation testing (StrykerJS)'
+        type: boolean
+        default: false
+
+env:
+  SUT_REPOSITORY: phenikaa-a2i-lab/SPINEINSIGHT_AI
+  # Commit 38ee7f1 trên nhánh vietvq: phiên bản SUT được chốt để kiểm thử.
+  SUT_REF: 38ee7f10484b56ac5a9ad15383d15f9333e36d2b
+  SUT_DIR: ./sut
+
+jobs:
+  backend:
+    name: Backend (Jest + Supertest + Istanbul)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout SUT
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SUT_REPOSITORY }}
+          ref: ${{ env.SUT_REF }}
+          path: sut
+          # SUT_TOKEN: Personal Access Token (quyền đọc repo SUT), khai báo trong
+          # Settings > Secrets and variables > Actions của repo này. Cần khi repo SUT để private; không khai báo thì dùng github.token (đủ cho repo public).
+          token: ${{ secrets.SUT_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sut/backend/package-lock.json
+
+      - run: npm ci
+      - run: npm ci --ignore-scripts
+        working-directory: sut/backend
+
+      - run: npm run test:backend:cov
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-backend
+          path: reports/coverage/backend
+
+  frontend:
+    name: Frontend (Vitest + fast-check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout SUT
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SUT_REPOSITORY }}
+          ref: ${{ env.SUT_REF }}
+          path: sut
+          token: ${{ secrets.SUT_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sut/frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm ci --ignore-scripts
+        working-directory: sut/frontend
+
+      - run: npm run test:frontend:cov
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-frontend
+          path: reports/coverage/frontend
+
+  mutation:
+    name: Mutation (StrykerJS)
+    # Chạy lâu hơn nên chỉ bật khi kích hoạt thủ công (Actions > test > Run workflow > mutation).
+    if: github.event_name == 'workflow_dispatch' && inputs.mutation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout SUT
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SUT_REPOSITORY }}
+          ref: ${{ env.SUT_REF }}
+          path: sut
+          token: ${{ secrets.SUT_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sut/backend/package-lock.json
+
+      - run: npm ci
+      - run: npm ci --ignore-scripts
+        working-directory: sut/backend
+
+      - run: npm run test:mutation
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report
+          path: reports/mutation

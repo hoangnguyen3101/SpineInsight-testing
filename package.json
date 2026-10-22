@@ -1,0 +1,26 @@
+{
+  "name": "spineinsight-testing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bộ kiểm thử tự động cho SpineInsight AI (SUT nằm ở SUT_DIR)",
+  "scripts": {
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "node scripts/run-jest.cjs",
+    "test:backend:cov": "node scripts/run-jest.cjs --coverage",
+    "test:frontend": "vitest run",
+    "test:frontend:cov": "vitest run --coverage",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "test:mutation": "node scripts/run-stryker.cjs"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/jest-runner": "^9.6.1",
+    "@vitest/coverage-v8": "^3.2.4",
+    "dotenv": "^16.6.1",
+    "fast-check": "^4.10.2",
+    "jest": "^29.7.0",
+    "selenium-webdriver": "^4.51.0",
+    "supertest": "^7.3.1",
+    "vitest": "^3.2.4"
+  }
+}
