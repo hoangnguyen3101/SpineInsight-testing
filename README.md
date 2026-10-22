@@ -107,7 +107,7 @@ npm run test:e2e
 | `npm run test:mutation` | StrykerJS trên utils, mappers, middlewares (sửa tệp tại chỗ rồi khôi phục) | `reports/mutation` |
 | `npm run test:e2e` | Tự khởi động Vite của SUT và máy chủ giả, chạy Selenium | `reports/e2e/screenshots` |
 
-Trên GitHub Actions, workflow tự lấy SUT về `./sut`. Nếu kho SUT ở chế độ riêng tư, cần khai báo secret `SUT_TOKEN`.
+Trên GitHub Actions, workflow clone SUT từ bản trên GitLab (`lumbar-spine/spineinsight_ai`) về `./sut` rồi checkout đúng commit `38ee7f1`. Nếu dự án GitLab ở chế độ private, khai báo hai secret `SUT_GITLAB_USER` và `SUT_GITLAB_TOKEN` (deploy token, scope `read_repository`).
 
 ---
 

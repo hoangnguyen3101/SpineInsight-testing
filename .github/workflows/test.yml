@@ -1,5 +1,5 @@
 # Chạy bộ kiểm thử SpineInsight AI trên mỗi lần push / pull request.
-# SUT (phenikaa-a2i-lab/SPINEINSIGHT_AI) được checkout vào ./sut tại đúng commit đã chốt để kiểm thử.
+# SUT được clone từ bản trên GitLab (lumbar-spine/spineinsight_ai) vào ./sut tại đúng commit đã chốt để kiểm thử.
 name: test
 
 on:
@@ -13,8 +13,8 @@ on:
         default: false
 
 env:
-  SUT_REPOSITORY: phenikaa-a2i-lab/SPINEINSIGHT_AI
-  # Commit 38ee7f1 trên nhánh vietvq: phiên bản SUT được chốt để kiểm thử.
+  SUT_REPOSITORY: lumbar-spine/spineinsight_ai
+  # Commit 38ee7f1 (nhánh vietvq): phiên bản SUT được chốt để kiểm thử.
   SUT_REF: 38ee7f10484b56ac5a9ad15383d15f9333e36d2b
   SUT_DIR: ./sut
 
@@ -25,15 +25,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Kho GitLab private: khai báo SUT_GITLAB_USER và SUT_GITLAB_TOKEN (deploy token, scope read_repository)
+      # trong Settings > Secrets and variables > Actions. Kho public thì để trống.
       - name: Checkout SUT
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.SUT_REPOSITORY }}
-          ref: ${{ env.SUT_REF }}
-          path: sut
-          # SUT_TOKEN: Personal Access Token (quyền đọc repo SUT), khai báo trong
-          # Settings > Secrets and variables > Actions của repo này. Cần khi repo SUT để private; không khai báo thì dùng github.token (đủ cho repo public).
-          token: ${{ secrets.SUT_TOKEN || github.token }}
+        env:
+          GITLAB_USER: ${{ secrets.SUT_GITLAB_USER }}
+          GITLAB_TOKEN: ${{ secrets.SUT_GITLAB_TOKEN }}
+        run: |
+          rm -rf sut
+          auth=""
+          if [ -n "$GITLAB_TOKEN" ]; then auth="${GITLAB_USER}:${GITLAB_TOKEN}@"; fi
+          git clone --quiet "https://${auth}gitlab.com/${SUT_REPOSITORY}.git" sut
+          git -C sut checkout --quiet "$SUT_REF"
+          git -C sut remote set-url origin "https://gitlab.com/${SUT_REPOSITORY}.git"
+          git -C sut log -1 --format='SUT %h %s'
 
       - uses: actions/setup-node@v4
         with:
@@ -62,12 +67,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout SUT
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.SUT_REPOSITORY }}
-          ref: ${{ env.SUT_REF }}
-          path: sut
-          token: ${{ secrets.SUT_TOKEN || github.token }}
+        env:
+          GITLAB_USER: ${{ secrets.SUT_GITLAB_USER }}
+          GITLAB_TOKEN: ${{ secrets.SUT_GITLAB_TOKEN }}
+        run: |
+          rm -rf sut
+          auth=""
+          if [ -n "$GITLAB_TOKEN" ]; then auth="${GITLAB_USER}:${GITLAB_TOKEN}@"; fi
+          git clone --quiet "https://${auth}gitlab.com/${SUT_REPOSITORY}.git" sut
+          git -C sut checkout --quiet "$SUT_REF"
+          git -C sut remote set-url origin "https://gitlab.com/${SUT_REPOSITORY}.git"
+          git -C sut log -1 --format='SUT %h %s'
 
       - uses: actions/setup-node@v4
         with:
@@ -98,12 +108,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout SUT
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.SUT_REPOSITORY }}
-          ref: ${{ env.SUT_REF }}
-          path: sut
-          token: ${{ secrets.SUT_TOKEN || github.token }}
+        env:
+          GITLAB_USER: ${{ secrets.SUT_GITLAB_USER }}
+          GITLAB_TOKEN: ${{ secrets.SUT_GITLAB_TOKEN }}
+        run: |
+          rm -rf sut
+          auth=""
+          if [ -n "$GITLAB_TOKEN" ]; then auth="${GITLAB_USER}:${GITLAB_TOKEN}@"; fi
+          git clone --quiet "https://${auth}gitlab.com/${SUT_REPOSITORY}.git" sut
+          git -C sut checkout --quiet "$SUT_REF"
+          git -C sut remote set-url origin "https://gitlab.com/${SUT_REPOSITORY}.git"
+          git -C sut log -1 --format='SUT %h %s'
 
       - uses: actions/setup-node@v4
         with:
