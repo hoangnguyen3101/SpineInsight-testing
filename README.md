@@ -8,7 +8,7 @@ Bộ kiểm thử và đánh giá chất lượng cho hệ thống **SpineInsigh
 | Học kỳ | HK I, năm học 2026–2027 |
 | Đơn vị | Đại học Phenikaa — Phenikaa Applied AI Lab |
 | Hệ thống được kiểm thử (SUT) | [phenikaa-a2i-lab/SPINEINSIGHT_AI](https://github.com/phenikaa-a2i-lab/SPINEINSIGHT_AI), commit `38ee7f1` (nhánh `vietvq`) |
-| Trạng thái | Đã thực thi đợt 1 (22/10/2026): 600 test, 15 lỗi được ghi nhận |
+| Trạng thái | Đã thực thi (22–23/10/2026): 639 test, 26 lỗi được ghi nhận |
 
 ---
 
@@ -32,7 +32,7 @@ Mục tiêu:
 | Unit backend | Jest | 249 | Đạt; 5 test ghi nhận lỗi |
 | API / tích hợp | Jest + Supertest | 189 | Đạt; 14 test ghi nhận lỗi; ma trận phân quyền 52/52 ô đúng |
 | Unit frontend | Vitest + fast-check | 153 | Đạt; 8 test ghi nhận lỗi |
-| E2E | Selenium WebDriver (POM) | 9 | Đạt; 1 test ghi nhận lỗi |
+| E2E | Selenium WebDriver (POM) | 48 | Đạt; 12 test ghi nhận lỗi (9 kịch bản đăng nhập + 39 kịch bản trình xem ảnh trên một ca MRI thật đã ẩn danh) |
 
 | Chỉ số | Ngưỡng | Thực tế |
 |---|---|---|
@@ -41,7 +41,7 @@ Mục tiêu:
 | Độ bao phủ frontend (7 module trong phạm vi) | — | 99,61% dòng, 97,80% nhánh |
 | Mutation score (utils, mappers, middlewares) | ≥ 60% | 99,00% |
 
-Test ghi nhận lỗi được viết với kết quả mong đợi theo đặc tả và đánh dấu `test.failing` (Jest) / `test.fails` (Vitest) / `knownBug` (E2E): bộ test vẫn xanh khi lỗi còn, và sẽ **chuyển đỏ khi lỗi được sửa** để nhắc bỏ đánh dấu. Danh sách lỗi BUG-01…BUG-15 nằm trong báo cáo BTL (Chương 6, nhật ký lỗi); mã lỗi xuất hiện trong tên test tương ứng.
+Test ghi nhận lỗi được viết với kết quả mong đợi theo đặc tả và đánh dấu `test.failing` (Jest) / `test.fails` (Vitest) / `knownBug` (E2E): bộ test vẫn xanh khi lỗi còn, và sẽ **chuyển đỏ khi lỗi được sửa** để nhắc bỏ đánh dấu. Danh sách lỗi BUG-01…BUG-26 nằm trong báo cáo BTL (Chương 6, nhật ký lỗi); mã lỗi xuất hiện trong tên test tương ứng.
 
 ---
 
@@ -127,7 +127,14 @@ Mức độ nghiêm trọng của lỗi: **Critical** (lộ dữ liệu bệnh n
 
 ## 7. Lưu ý về dữ liệu y tế
 
-Không commit ảnh DICOM thật của bệnh nhân. Nếu cần ảnh thật, chỉ dùng ca mẫu đã ẩn danh từ bộ [RSNA 2024 Lumbar Spine Degenerative Classification](https://www.kaggle.com/competitions/rsna-2024-lumbar-spine-degenerative-classification) theo giấy phép phi thương mại. Tệp `.env` không được commit; chỉ commit `.env.example`.
+Không commit ảnh DICOM vào repo, kể cả bản đã ẩn danh. E2E của trình xem ảnh đọc một ca MRI đã ẩn danh nằm **ngoài repo**, trỏ tới bằng `DICOM_TEST_DIR` trong `.env` (mỗi series một thư mục con); để trống thì các kịch bản viewer tự bỏ qua. Quy trình chuẩn bị:
+
+```bat
+python scripts\deidentify.py <thư mục ca gốc> F:\2026-2027\HKI\dicom-test-data CASE01
+python scripts\dicom_leakcheck.py <thư mục ca gốc> F:\2026-2027\HKI\dicom-test-data
+```
+
+`deidentify.py` áp dụng tập con hồ sơ cơ bản DICOM PS3.15 (xoá tên, mã, ngày sinh, cơ sở y tế, bác sĩ, accession; thay UID; bỏ thẻ riêng của hãng; đưa ngày về giá trị cố định; giữ giới tính và tuổi). `dicom_leakcheck.py` dò từng byte của bản sao và chỉ in số lần còn sót, không in giá trị. Cần kiểm tra thêm bằng mắt rằng ảnh không có chữ in sẵn trên pixel. Chỉ dùng dữ liệu đã được phép sử dụng. Nếu cần ảnh công khai, dùng ca mẫu đã ẩn danh từ bộ [RSNA 2024 Lumbar Spine Degenerative Classification](https://www.kaggle.com/competitions/rsna-2024-lumbar-spine-degenerative-classification) theo giấy phép phi thương mại. Tệp `.env` không được commit; chỉ commit `.env.example`.
 
 ---
 

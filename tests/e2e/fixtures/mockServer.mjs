@@ -59,10 +59,33 @@ function toUser(account) {
 
 const EMPTY_PAGE = { data: [], total: 0, page: 1, perPage: 100 }
 
+// Các endpoint nhận ảnh để phân tích/sinh báo cáo (RSNA, P2VG) mà frontend có thể gọi.
+const UPLOAD_PATHS = new Set([
+  '/api/v1/report/upload-dicom-zip',
+  '/api/v1/spine/analyze',
+  '/api/v1/spine/predict',
+  '/api/v1/p2vg/analyze',
+  '/predict/analyze',
+])
+const ZIP_LOCAL_HEADER = Buffer.from([0x50, 0x4b, 0x03, 0x04])
+const DICOM_MAGIC = Buffer.from('DICM', 'latin1')
+
+/** Đếm số lần `needle` xuất hiện trong `buffer`, chỉ tính các lần kết thúc sau vị trí `skip` (tránh đếm trùng giữa hai chunk). */
+function countOf(buffer, needle, skip) {
+  let count = 0
+  let index = buffer.indexOf(needle)
+  while (index !== -1) {
+    if (index + needle.length > skip) count++
+    index = buffer.indexOf(needle, index + 1)
+  }
+  return count
+}
+
 export function createMockServer() {
   const sessions = new Map()
   const refreshTokens = new Map()
   const requests = []
+  const uploads = []
 
   function issueSession(account) {
     const accessToken = fakeJwt(account)
@@ -104,6 +127,46 @@ export function createMockServer() {
     }
 
     if (req.method === 'OPTIONS') return send(204)
+
+    // Viewer tự gửi cả thư mục DICOM (dạng ZIP) sang dịch vụ AI sinh báo cáo sau khi nạp. Máy chủ giả chỉ ghi
+    // nhận siêu dữ liệu của request (kích thước, kiểu nội dung, tên trường, số chữ ký ZIP "PK\x03\x04" và DICOM
+    // "DICM" đi qua), không lưu hay chuyển tiếp nội dung, rồi trả lỗi "dịch vụ tắt" để luồng AI kết thúc ngay.
+    if (req.method === 'POST' && UPLOAD_PATHS.has(url.pathname)) {
+      const record = {
+        path: url.pathname,
+        contentType: req.headers['content-type'] || '',
+        contentLength: Number(req.headers['content-length'] || 0),
+        bytes: 0,
+        field: null,
+        fileName: null,
+        zipEntries: 0,
+        dicomMagic: 0,
+        completed: false,
+      }
+      uploads.push(record)
+      let head = ''
+      let carry = Buffer.alloc(0)
+      req.on('data', (chunk) => {
+        record.bytes += chunk.length
+        if (head.length < 2048) {
+          head += chunk.subarray(0, 2048 - head.length).toString('latin1')
+          const disposition = head.match(/Content-Disposition: form-data; name="([^"]+)"(?:; filename="([^"]*)")?/i)
+          if (disposition) {
+            record.field = disposition[1]
+            record.fileName = disposition[2] ?? null
+          }
+        }
+        const window = Buffer.concat([carry, chunk])
+        record.zipEntries += countOf(window, ZIP_LOCAL_HEADER, carry.length)
+        record.dicomMagic += countOf(window, DICOM_MAGIC, carry.length)
+        carry = window.subarray(Math.max(0, window.length - 3))
+      })
+      req.on('end', () => {
+        record.completed = true
+        send(503, { detail: 'AI service disabled in E2E (mock)' })
+      })
+      return undefined
+    }
 
     let body = {}
     if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
@@ -169,12 +232,16 @@ export function createMockServer() {
     if (req.method === 'GET' && url.pathname === '/api/v1/dicom/folders') {
       return send(200, { data: [] })
     }
+    if (req.method === 'GET' && url.pathname === '/api/v1/health') {
+      return send(200, { status: 'error', ok: false, error: 'AI service disabled in E2E (mock)' })
+    }
 
     return send(404, { error: `Mock khong ho tro ${req.method} ${url.pathname}` })
   })
 
   return {
     requests,
+    uploads,
     listen: (port) => new Promise((resolve, reject) => {
       server.once('error', reject)
       server.listen(port, '127.0.0.1', resolve)

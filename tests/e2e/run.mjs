@@ -55,11 +55,15 @@ async function waitForHttp(url, timeoutMs) {
   throw new Error(`Hết thời gian chờ ${url}`)
 }
 
+// E2E_SPEC=viewer chỉ chạy specs/viewer.e2e.mjs (mặc định chạy mọi kịch bản); E2E_GREP lọc theo tên kịch bản.
+const SPEC_GLOB = `tests/e2e/specs/${process.env.E2E_SPEC || '*'}.e2e.mjs`
+const GREP = process.env.E2E_GREP ? [`--test-name-pattern=${process.env.E2E_GREP}`] : []
+
 function runTests() {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ['--test', '--test-concurrency=1', '--test-reporter=spec', 'tests/e2e/specs/*.e2e.mjs'],
+      ['--test', '--test-concurrency=1', '--test-reporter=spec', ...GREP, SPEC_GLOB],
       {
         cwd: REPO_DIR,
         env: { ...process.env, E2E_BASE_URL: APP_URL, E2E_MOCK_PORT: String(MOCK_PORT) },
