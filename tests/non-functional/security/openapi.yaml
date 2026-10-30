@@ -1,0 +1,254 @@
+# Mục đích: Đặc tả OpenAPI 3 tối giản cho 39 endpoint của backend SpineInsight AI (commit 38ee7f1),
+# dùng để OWASP ZAP nhập và quét API. Giá trị ví dụ khớp dữ liệu của máy chủ giả trong tests/non-functional/support.
+openapi: 3.0.3
+info:
+  title: SpineInsight AI backend (kiểm thử bảo mật)
+  version: 38ee7f1
+servers:
+  - url: http://127.0.0.1:3102
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: 00000000-0000-4000-8002-000000000001 }
+    userId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: 00000000-0000-4000-8001-000000000003 }
+    studyId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: 00000000-0000-4000-8004-000000000001 }
+    departmentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: 00000000-0000-4000-8003-000000000001 }
+    patient:
+      name: patient
+      in: path
+      required: true
+      schema: { type: string, example: P1 }
+    series:
+      name: series
+      in: path
+      required: true
+      schema: { type: string, example: S1 }
+    folderName:
+      name: folderName
+      in: path
+      required: true
+      schema: { type: string, example: P1 }
+    fileName:
+      name: fileName
+      in: path
+      required: true
+      schema: { type: string, example: IM0001.dcm }
+    page:
+      name: page
+      in: query
+      schema: { type: integer, example: 1 }
+    perPage:
+      name: perPage
+      in: query
+      schema: { type: integer, example: 20 }
+  requestBodies:
+    dicomUpload:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              files: { type: string, format: binary }
+              relativePaths: { type: string, example: CASE/S1/IM0001.dcm }
+              prompt: { type: string, example: Describe findings }
+              rsnaFindings: { type: string, example: '[]' }
+  responses:
+    ok:
+      description: OK
+security:
+  - bearer: []
+paths:
+  /health:
+    get: { summary: Health, security: [], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /health/supabase:
+    get: { summary: Supabase health, security: [], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/auth/login:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, example: doctor@perf.local }
+                password: { type: string, example: Doctor@12345 }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+  /api/v1/auth/refresh:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { refreshToken: { type: string, example: invalid-refresh-token } } }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+  /api/v1/auth/me:
+    get: { responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/auth/profile:
+    put:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { fullName: { type: string, example: Perf Doctor }, phone: { type: string, example: '0900000000' } } }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+  /api/v1/auth/password:
+    put:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { currentPassword: { type: string, example: Doctor@12345 }, newPassword: { type: string, example: NewPass@12345 } } }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+  /api/v1/auth/users:
+    get:
+      parameters: [{ $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/perPage' }, { name: q, in: query, schema: { type: string, example: perf } }, { name: role, in: query, schema: { type: string, example: doctor } }]
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, example: newdoctor@perf.local }
+                password: { type: string, example: Doctor@12345 }
+                fullName: { type: string, example: New Doctor }
+                role: { type: string, example: doctor }
+                hospitalId: { type: string, example: 00000000-0000-4000-8002-000000000001 }
+                departmentId: { type: string, example: 00000000-0000-4000-8003-000000000001 }
+      responses: { '201': { $ref: '#/components/responses/ok' } }
+  /api/v1/auth/users/{id}/status:
+    patch:
+      parameters: [{ $ref: '#/components/parameters/userId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { isActive: { type: boolean, example: true } } }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+  /api/v1/auth/users/{id}/reset-password:
+    post: { parameters: [{ $ref: '#/components/parameters/userId' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/auth/users/{id}:
+    delete: { parameters: [{ $ref: '#/components/parameters/userId' }], responses: { '204': { $ref: '#/components/responses/ok' } } }
+  /api/v1/hospitals:
+    get:
+      parameters: [{ $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/perPage' }]
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { code: { type: string, example: BVZAP001 }, name: { type: string, example: Benh vien ZAP } } }
+      responses: { '201': { $ref: '#/components/responses/ok' } }
+  /api/v1/hospitals/{id}:
+    get: { parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+    delete: { parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/hospitals/{id}/status:
+    patch:
+      parameters: [{ $ref: '#/components/parameters/id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { isActive: { type: boolean, example: true } } }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+  /api/v1/hospitals/{id}/reset-password:
+    post: { parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/departments:
+    get:
+      parameters: [{ name: hospitalId, in: query, schema: { type: string, example: 00000000-0000-4000-8002-000000000001 } }]
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { hospitalId: { type: string, example: 00000000-0000-4000-8002-000000000001 }, name: { type: string, example: Khoa ZAP } } }
+      responses: { '201': { $ref: '#/components/responses/ok' } }
+  /api/v1/departments/{id}:
+    patch:
+      parameters: [{ $ref: '#/components/parameters/departmentId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string, example: Khoa ZAP 2 } } }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+    delete: { parameters: [{ $ref: '#/components/parameters/departmentId' }], responses: { '204': { $ref: '#/components/responses/ok' } } }
+  /api/v1/dicom/folders:
+    get: { responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/dicom/folders/{patient}/{series}/files:
+    get: { parameters: [{ $ref: '#/components/parameters/patient' }, { $ref: '#/components/parameters/series' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/dicom/folders/{patient}/{series}/files/{fileName}:
+    get: { parameters: [{ $ref: '#/components/parameters/patient' }, { $ref: '#/components/parameters/series' }, { $ref: '#/components/parameters/fileName' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/dicom/folders/{folderName}/files:
+    get: { parameters: [{ $ref: '#/components/parameters/folderName' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/dicom/folders/{folderName}/files/{fileName}:
+    get: { parameters: [{ $ref: '#/components/parameters/folderName' }, { $ref: '#/components/parameters/fileName' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/spine/health:
+    get: { security: [], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/spine/config:
+    get: { security: [], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/spine/predict:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { dicomDir: { type: string, example: /data/CASE01 } } }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+  /api/v1/spine/analyze:
+    post: { security: [], requestBody: { $ref: '#/components/requestBodies/dicomUpload' }, responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/p2vg/health:
+    get: { security: [], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/p2vg/config:
+    get: { security: [], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/p2vg/analyze:
+    post: { security: [], requestBody: { $ref: '#/components/requestBodies/dicomUpload' }, responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/studies:
+    get:
+      security: []
+      parameters: [{ $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/perPage' }]
+      responses: { '200': { $ref: '#/components/responses/ok' } }
+  /api/v1/studies/{id}:
+    get: { security: [], parameters: [{ $ref: '#/components/parameters/studyId' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/studies/{id}/rsna:
+    get: { security: [], parameters: [{ $ref: '#/components/parameters/studyId' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/studies/{id}/p2vg:
+    get: { security: [], parameters: [{ $ref: '#/components/parameters/studyId' }], responses: { '200': { $ref: '#/components/responses/ok' } } }
+  /api/v1/studies/{id}/report:
+    put:
+      security: []
+      parameters: [{ $ref: '#/components/parameters/studyId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { reportId: { type: string, example: 00000000-0000-4000-8006-000000000001 }, editedReport: { type: string, example: Edited by ZAP }, editedBy: { type: string, example: zap } } }
+      responses: { '200': { $ref: '#/components/responses/ok' } }
