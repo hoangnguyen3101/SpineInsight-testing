@@ -42,6 +42,25 @@
     return win
   }
 
+  // In phiếu kết quả qua iframe ẩn (reportPrinter.ts): thay print() của cửa sổ iframe để ghi lại nội dung in.
+  const printedReports = []
+  const contentWindow = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow')
+  Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+    configurable: true,
+    get() {
+      const win = contentWindow.get.call(this)
+      if (win && !win.__e2ePrintHooked) {
+        try {
+          win.__e2ePrintHooked = true
+          win.print = () => { printedReports.push(win.document.body ? win.document.body.innerText : '') }
+        } catch {
+          // iframe khác origin: bỏ qua
+        }
+      }
+      return win
+    },
+  })
+
   function roots() {
     return [...document.querySelectorAll('button[aria-label="Play cine"], button[aria-label="Stop cine"]')]
       .map((button) => button.closest('div.rounded-lg.bg-black'))
@@ -193,7 +212,7 @@
   }
 
   window.__e2e = {
-    errors, texts, print, info, grid, stats, sample, ink, canvasToClient, clientToCanvas, requests,
+    errors, texts, print, printedReports, info, grid, stats, sample, ink, canvasToClient, clientToCanvas, requests,
     count: () => roots().length,
     clearTexts: () => { texts.length = 0 },
     lastText: (pattern) => {

@@ -15,6 +15,13 @@ export async function createDriver() {
     '--disable-search-engine-choice-screen',
     '--lang=en-US',
   )
+  // Tắt trình quản lý mật khẩu: mật khẩu giả như "Hospital@12345" nằm trong danh sách rò rỉ nên Chrome mở hộp thoại
+  // cảnh báo của trình duyệt, chặn mọi thao tác chuột/phím trên tab đó (click không tới trang).
+  options.setUserPreferences({
+    credentials_enable_service: false,
+    'profile.password_manager_enabled': false,
+    'profile.password_manager_leak_detection': false,
+  })
 
   const driver = await new Builder().forBrowser(Browser.CHROME).setChromeOptions(options).build()
   await driver.manage().setTimeouts({ pageLoad: 30000, script: 10000 })

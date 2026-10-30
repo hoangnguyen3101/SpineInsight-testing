@@ -8,7 +8,7 @@ Bộ kiểm thử và đánh giá chất lượng cho hệ thống **SpineInsigh
 | Học kỳ | HK I, năm học 2026–2027 |
 | Đơn vị | Đại học Phenikaa — Phenikaa Applied AI Lab |
 | Hệ thống được kiểm thử (SUT) | [phenikaa-a2i-lab/SPINEINSIGHT_AI](https://github.com/phenikaa-a2i-lab/SPINEINSIGHT_AI), commit `38ee7f1` (nhánh `vietvq`) |
-| Trạng thái | Đã thực thi (22–23/10/2026): 639 test, 26 lỗi được ghi nhận |
+| Trạng thái | Đã thực thi (22–30/10/2026): 814 test, 41 lỗi được ghi nhận |
 
 ---
 
@@ -30,18 +30,22 @@ Mục tiêu:
 | Tầng | Công cụ | Test | Kết quả |
 |---|---|---|---|
 | Unit backend | Jest | 249 | Đạt; 5 test ghi nhận lỗi |
-| API / tích hợp | Jest + Supertest | 189 | Đạt; 14 test ghi nhận lỗi; ma trận phân quyền 52/52 ô đúng |
-| Unit frontend | Vitest + fast-check | 153 | Đạt; 8 test ghi nhận lỗi |
-| E2E | Selenium WebDriver (POM) | 48 | Đạt; 12 test ghi nhận lỗi (9 kịch bản đăng nhập + 39 kịch bản trình xem ảnh trên một ca MRI thật đã ẩn danh) |
+| API / tích hợp | Jest + Supertest | 190 | Đạt; 14 test ghi nhận lỗi; 39/39 endpoint; ma trận phân quyền 52/52 ô đúng |
+| Unit frontend | Vitest + fast-check | 290 | Đạt; 15 test ghi nhận lỗi |
+| E2E | Selenium WebDriver (POM) | 68 | Đạt; 17 test ghi nhận lỗi (9 đăng nhập, 39 trình xem ảnh trên một ca MRI thật đã ẩn danh, 10 luồng AI → báo cáo, 10 quản trị) |
+| Hiệu năng | k6 | 8 kịch bản | Đạt ngưỡng ở tải thường; bộ nhớ khi upload tăng 2–3× dung lượng tải |
+| Bảo mật | OWASP ZAP + kiểm tra tái hiện | 3 lượt quét, 9 kiểm tra | 7 kiểm tra ghi nhận lỗi, 2 kiểm tra đối chứng đạt |
 
 | Chỉ số | Ngưỡng | Thực tế |
 |---|---|---|
 | Độ bao phủ dòng backend | ≥ 80% | 99,77% |
 | Độ bao phủ nhánh backend | ≥ 70% | 97,33% |
-| Độ bao phủ frontend (7 module trong phạm vi) | — | 99,61% dòng, 97,80% nhánh |
-| Mutation score (utils, mappers, middlewares) | ≥ 60% | 99,00% |
+| Độ bao phủ frontend (10 module trong phạm vi) | — | 99,47% dòng, 97,42% nhánh |
+| Mutation score backend (utils, mappers, middlewares) | ≥ 60% | 99,00% |
+| Mutation score frontend (hình học DICOM, hiển thị, logic miền) | ≥ 60% | 94,44% |
+| p95 API ở 50 người dùng đồng thời | < 300 ms | tối đa 274 ms, 0% lỗi |
 
-Test ghi nhận lỗi được viết với kết quả mong đợi theo đặc tả và đánh dấu `test.failing` (Jest) / `test.fails` (Vitest) / `knownBug` (E2E): bộ test vẫn xanh khi lỗi còn, và sẽ **chuyển đỏ khi lỗi được sửa** để nhắc bỏ đánh dấu. Danh sách lỗi BUG-01…BUG-26 nằm trong báo cáo BTL (Chương 6, nhật ký lỗi); mã lỗi xuất hiện trong tên test tương ứng.
+Test ghi nhận lỗi được viết với kết quả mong đợi theo đặc tả và đánh dấu `test.failing` (Jest) / `test.fails` (Vitest) / `knownBug` (E2E, kiểm tra bảo mật): bộ test vẫn xanh khi lỗi còn, và sẽ **chuyển đỏ khi lỗi được sửa** để nhắc bỏ đánh dấu. Danh sách lỗi BUG-01…BUG-41 nằm trong báo cáo BTL (Chương 6, nhật ký lỗi); mã lỗi xuất hiện trong tên test tương ứng.
 
 ---
 
@@ -98,13 +102,20 @@ npm run test:backend:cov
 npm run test:frontend:cov
 npm run test:mutation
 npm run test:e2e
+npm run test:mutation:frontend
+npm run test:perf
+npm run test:security
 ```
 
 | Lệnh | Nội dung | Báo cáo |
 |---|---|---|
 | `npm run test:backend:cov` | Unit test + API test backend, độ bao phủ Istanbul | `reports/coverage/backend` |
 | `npm run test:frontend:cov` | Unit test + property test frontend | `reports/coverage/frontend` |
-| `npm run test:mutation` | StrykerJS trên utils, mappers, middlewares (sửa tệp tại chỗ rồi khôi phục) | `reports/mutation` |
+| `npm run test:mutation` | StrykerJS trên utils, mappers, middlewares của backend (sửa tệp tại chỗ rồi khôi phục) | `reports/mutation` |
+| `npm run test:mutation:frontend` | StrykerJS + Vitest trên các module hình học, hiển thị, logic miền của frontend (khoảng 6 phút) | `reports/mutation-frontend` |
+| `npm run test:perf` | Backend thật + Supabase/AI giả trên 127.0.0.1, chạy k6 (khoảng 4,5 phút; tự tải k6 vào `.tools/`) | `reports/performance` |
+| `npm run test:security` | 3 lượt quét OWASP ZAP + 9 kiểm tra tái hiện (khoảng 20 phút; tự tải ZAP, cần Java 17+) | `reports/security` |
+| `set SECURITY_SKIP_ZAP=1&& npm run test:security` | Chỉ chạy 9 kiểm tra tái hiện trên kết quả ZAP đã có | `reports/security` |
 | `npm run test:e2e` | Tự khởi động Vite của SUT và máy chủ giả, chạy Selenium | `reports/e2e/screenshots` |
 
 Trên GitHub Actions, workflow clone SUT từ bản trên GitLab (`lumbar-spine/spineinsight_ai`) về `./sut` rồi checkout đúng commit `38ee7f1`. Nếu dự án GitLab ở chế độ private, khai báo hai secret `SUT_GITLAB_USER` và `SUT_GITLAB_TOKEN` (deploy token, scope `read_repository`).

@@ -3,6 +3,8 @@
 import http from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { ACCOUNTS, HOSPITAL } from './accounts.mjs'
+import { impressionResponse, p2vgReport, rsnaResult } from './aiPayloads.mjs'
+import { createBackendState, handleBackend } from './mockBackend.mjs'
 
 function toProfile(account) {
   const inHospital = account.role !== 'admin'
@@ -57,18 +59,18 @@ function toUser(account) {
   }
 }
 
-const EMPTY_PAGE = { data: [], total: 0, page: 1, perPage: 100 }
-
-// Các endpoint nhận ảnh để phân tích/sinh báo cáo (RSNA, P2VG) mà frontend có thể gọi.
-const UPLOAD_PATHS = new Set([
-  '/api/v1/report/upload-dicom-zip',
-  '/api/v1/spine/analyze',
-  '/api/v1/spine/predict',
-  '/api/v1/p2vg/analyze',
-  '/predict/analyze',
+// Các endpoint nhận ảnh để phân tích/sinh báo cáo mà frontend có thể gọi, và loại dịch vụ AI tương ứng.
+const UPLOAD_PATHS = new Map([
+  ['/api/v1/report/upload-dicom-zip', 'p2vg'],
+  ['/api/v1/p2vg/analyze', 'p2vg'],
+  ['/api/v1/spine/analyze', 'spine'],
+  ['/api/v1/spine/predict', 'spine'],
+  ['/predict/analyze', 'spine'],
 ])
+const AI_PAYLOADS = { spine: rsnaResult, p2vg: p2vgReport, impression: impressionResponse }
 const ZIP_LOCAL_HEADER = Buffer.from([0x50, 0x4b, 0x03, 0x04])
 const DICOM_MAGIC = Buffer.from('DICM', 'latin1')
+const PART_HEADER = Buffer.from('Content-Disposition: form-data; name="', 'latin1')
 
 /** Đếm số lần `needle` xuất hiện trong `buffer`, chỉ tính các lần kết thúc sau vị trí `skip` (tránh đếm trùng giữa hai chunk). */
 function countOf(buffer, needle, skip) {
@@ -86,6 +88,24 @@ export function createMockServer() {
   const refreshTokens = new Map()
   const requests = []
   const uploads = []
+  const backend = createBackendState()
+  // Hàng đợi cách phản hồi của từng dịch vụ AI: 'ok' | '503' | 'network'; hết hàng đợi thì trả 503 (AI tắt).
+  const ai = { spine: [], p2vg: [], impression: [], delayMs: 0 }
+  const nextMode = (kind) => (ai[kind].length > 0 ? ai[kind].shift() : '503')
+
+  /** Trả phản hồi AI theo chế độ: dữ liệu giả hợp lệ, lỗi 503 hoặc ngắt kết nối (lỗi mạng). */
+  function respondAi(res, send, kind, mode) {
+    setTimeout(() => {
+      if (mode === 'network') {
+        // Phản hồi bị cắt giữa chừng rồi đóng kết nối (trình duyệt báo lỗi mạng). Không đóng socket ngay từ đầu
+        // vì Chrome sẽ tự gửi lại POST trên kết nối keep-alive và che mất lỗi.
+        res.socket?.end('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 4096\r\n\r\n{"truncated":')
+        return
+      }
+      if (mode === 'ok') return send(200, AI_PAYLOADS[kind]())
+      return send(503, { error: `AI ${kind} service unavailable (mock)`, detail: `AI ${kind} service unavailable (mock)` })
+    }, ai.delayMs)
+  }
 
   function issueSession(account) {
     const accessToken = fakeJwt(account)
@@ -128,42 +148,56 @@ export function createMockServer() {
 
     if (req.method === 'OPTIONS') return send(204)
 
-    // Viewer tự gửi cả thư mục DICOM (dạng ZIP) sang dịch vụ AI sinh báo cáo sau khi nạp. Máy chủ giả chỉ ghi
-    // nhận siêu dữ liệu của request (kích thước, kiểu nội dung, tên trường, số chữ ký ZIP "PK\x03\x04" và DICOM
-    // "DICM" đi qua), không lưu hay chuyển tiếp nội dung, rồi trả lỗi "dịch vụ tắt" để luồng AI kết thúc ngay.
+    // Viewer gửi ảnh DICOM sang dịch vụ AI (RSNA qua backend, P2VG trực tiếp). Máy chủ giả chỉ ghi nhận siêu dữ
+    // liệu của request (kích thước, kiểu nội dung, tên các trường multipart, số chữ ký ZIP "PK\x03\x04" và DICOM
+    // "DICM" đi qua), không lưu hay chuyển tiếp nội dung, rồi phản hồi theo chế độ đã đặt trong `ai`.
     if (req.method === 'POST' && UPLOAD_PATHS.has(url.pathname)) {
+      const kind = UPLOAD_PATHS.get(url.pathname)
       const record = {
         path: url.pathname,
+        kind,
+        mode: nextMode(kind),
+        authorization: Boolean(req.headers.authorization),
         contentType: req.headers['content-type'] || '',
         contentLength: Number(req.headers['content-length'] || 0),
         bytes: 0,
         field: null,
         fileName: null,
+        fields: {},
         zipEntries: 0,
         dicomMagic: 0,
         completed: false,
+        startedAt: Date.now(),
+        endedAt: null,
       }
       uploads.push(record)
-      let head = ''
       let carry = Buffer.alloc(0)
       req.on('data', (chunk) => {
         record.bytes += chunk.length
-        if (head.length < 2048) {
-          head += chunk.subarray(0, 2048 - head.length).toString('latin1')
-          const disposition = head.match(/Content-Disposition: form-data; name="([^"]+)"(?:; filename="([^"]*)")?/i)
-          if (disposition) {
-            record.field = disposition[1]
-            record.fileName = disposition[2] ?? null
-          }
-        }
         const window = Buffer.concat([carry, chunk])
         record.zipEntries += countOf(window, ZIP_LOCAL_HEADER, carry.length)
         record.dicomMagic += countOf(window, DICOM_MAGIC, carry.length)
-        carry = window.subarray(Math.max(0, window.length - 3))
+        let index = window.indexOf(PART_HEADER)
+        while (index !== -1) {
+          if (index + PART_HEADER.length > carry.length) {
+            const header = window.subarray(index, index + 300).toString('latin1')
+            const match = header.match(/name="([^"]+)"(?:; filename="([^"]*)")?/)
+            if (match) {
+              record.fields[match[1]] = (record.fields[match[1]] || 0) + 1
+              if (!record.field) {
+                record.field = match[1]
+                record.fileName = match[2] ?? null
+              }
+            }
+          }
+          index = window.indexOf(PART_HEADER, index + 1)
+        }
+        carry = window.subarray(Math.max(0, window.length - PART_HEADER.length))
       })
       req.on('end', () => {
         record.completed = true
-        send(503, { detail: 'AI service disabled in E2E (mock)' })
+        record.endedAt = Date.now()
+        respondAi(res, send, kind, record.mode)
       })
       return undefined
     }
@@ -217,11 +251,14 @@ export function createMockServer() {
       if (account.locked) return send(403, { error: 'Tai khoan da bi vo hieu hoa' })
       return send(200, { data: { profile: toProfile(account) } })
     }
-    if (req.method === 'GET' && (url.pathname === '/api/v1/hospitals' || url.pathname === '/api/v1/auth/users')) {
-      return send(200, { data: EMPTY_PAGE })
-    }
-    if (req.method === 'GET' && url.pathname === '/api/v1/departments') {
-      return send(200, { data: [] })
+    const managed = handleBackend(backend, {
+      method: req.method, path: url.pathname, query: url.searchParams, body, actorAccount: accountFromBearer(req),
+    })
+    if (managed) return send(managed.status, managed.body)
+    // Dịch vụ sinh "impression" (MedGemma) — frontend gọi trực tiếp VITE_IMPRESSION_API_URL + /impression.
+    if (req.method === 'POST' && url.pathname === '/impression') {
+      uploads.push({ path: url.pathname, kind: 'impression', mode: ai.impression[0] ?? '503', body, completed: true })
+      return respondAi(res, send, 'impression', nextMode('impression'))
     }
     if (req.method === 'GET' && /^\/api\/v1\/(spine|p2vg)\/config$/.test(url.pathname)) {
       return send(200, { aiServerUrl: null, apiKey: null })
@@ -242,6 +279,8 @@ export function createMockServer() {
   return {
     requests,
     uploads,
+    backend,
+    ai,
     listen: (port) => new Promise((resolve, reject) => {
       server.once('error', reject)
       server.listen(port, '127.0.0.1', resolve)

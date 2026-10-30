@@ -44,7 +44,7 @@ export class ViewerPage extends BasePage {
 
   async loadFolder(dir) {
     // Ô chọn thư mục bị ẩn (class hidden): chỉ chờ có trong DOM rồi gửi đường dẫn thư mục.
-    const input = await this.driver.wait(until.elementLocated(this.folderInput), DEFAULT_TIMEOUT, 'Không thấy ô chọn thư mục DICOM')
+    const input = await this.driver.wait(until.elementLocated(this.folderInput), 60000, 'Không thấy ô chọn thư mục DICOM')
     const started = Date.now()
     await input.sendKeys(dir)
     return started
@@ -265,9 +265,10 @@ export class ViewerPage extends BasePage {
   }
 
   /** Lỗi JavaScript ngoài các thông báo đã biết của luồng AI bị tắt trong E2E. */
-  async unexpectedErrors() {
+  async unexpectedErrors(allowed = []) {
     const errors = await this.driver.executeScript('return window.__e2e ? window.__e2e.errors : []')
     return errors.filter((e) => !/P2VG|AI service disabled|AI report service|Failed to load resource/.test(e.message))
+      .filter((e) => !allowed.some((re) => re.test(e.message)))
   }
 
   async externalRequests() {
