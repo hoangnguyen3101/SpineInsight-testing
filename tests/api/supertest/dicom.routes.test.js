@@ -98,6 +98,12 @@ describe('Tải tệp DICOM', () => {
     expect(res.headers['content-length']).toBeUndefined()
     expect(res.headers['transfer-encoding']).toBe('chunked')
   })
+  test('IT-DICOM-11: route cũ /folders/:folderName/files/:fileName, tên thư mục không có "/" -> 404, không gọi AI', async () => {
+    const res = await request(app).get(`${API}/folders/P1/files/x.dcm`).set(bearer('doctor'))
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'DICOM file not found' })
+    expect(fetch).not.toHaveBeenCalled()
+  })
   test('IT-DICOM-07: AI server trả 404 -> 404 "DICOM file not found"', async () => {
     fetch.mockResolvedValue(new Response(null, { status: 404 }))
     const res = await request(app).get(`${API}/folders/P1/S1/files/khong-co.dcm`).set(bearer('doctor'))
